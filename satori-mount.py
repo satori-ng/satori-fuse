@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # Taken from:
 #   https://github.com/skorokithakis/python-fuse-sample
-#   
 
 from __future__ import with_statement
 
 import os
 import sys
 import errno
+import logging
+from stat import S_IFDIR, S_IFREG
 
-from fuse import FUSE, FuseOSError, Operations
+from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 from satoricore.image import SatoriImage
 from satoricore.serialize import load_image
 
@@ -17,9 +18,8 @@ from satoricore.serialize import load_image
 class ReadOnlyException(Exception):
     """Filesystem loaded in Read-Only mode."""
 
-class Passthrough(Operations):
+class Passthrough(LoggingMixIn, Operations):
     def __init__(self, root, satori_image, read_only=True):
-        print(root)
         self.root = root
         self.read_only = read_only
         self.satori_image = satori_image
@@ -30,14 +30,14 @@ class Passthrough(Operations):
     def _full_path(self, partial):
         partial = partial.lstrip("/")
         path = os.path.join(self.root, partial)
-        return path
+        return partial
 
     # Filesystem methods
     # ==================
 
     def access(self, path, mode):
         full_path = self._full_path(path)
-        return True        
+        return True
         # if not os.access(full_path, mode):
         #     raise FuseOSError(errno.EACCES)
 
@@ -49,30 +49,33 @@ class Passthrough(Operations):
 
     def chown(self, path, uid, gid):
         if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")        
+            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
         full_path = self._full_path(path)
         return os.chown(full_path, uid, gid)
 
     def getattr(self, path, fh=None):
 
-        full_path = self._full_path(path)
-        # st = os.lstat(full_path)
-        satori_stat = self.satori_image.get_attribute(full_path, 'stat')
-        st = {}
+        # full_path = self._full_path(path)
+        st = self.satori_image.get_attribute(path, 'stat')
+        st.update(self.satori_image.get_attribute(path, 'times'))
+        print(path + str(st))
         st_list = ['st_atime', 'st_ctime', 'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid']
-        
+
         # st[k] = None
-        return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
-                     'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+        # try:
+        if st.get("privileges", None) is None:
+            return dict(st_mode=(S_IFDIR | 0o777), st_nlink=2)
+        st["mode"] = st["privileges"]
+        # print(dict(("st_" + key, st.get(key, 1)) for key in ('atime', 'ctime',
+                 # 'gid', 'mode', 'mtime', 'nlink', 'size', 'uid')))
+        return dict(("st_" + key, st.get(key, 1)) for key in ('atime', 'ctime',
+                 'gid', 'mode', 'mtime', 'nlink', 'size', 'uid'))
+        # except AttributeError:
 
     def readdir(self, path, fh):
-        full_path = self._full_path(path)
+        # full_path = self._full_path(path)
 
-        dirents = ['.', '..']
-        if os.path.isdir(full_path):
-            dirents.extend(os.listdir(full_path))
-        for r in dirents:
-            yield r
+        return self.satori_image.get_dir_contents(path)
 
     def readlink(self, path):
         pathname = os.readlink(self._full_path(path))
@@ -173,18 +176,19 @@ class Passthrough(Operations):
 def main(mountpoint, root):
     FUSE(
         Passthrough(
-            root,
             mountpoint,
+            root,
             ),
         mountpoint,
+        foreground=True,
         # nothreads=True,
-        # foreground=True,
         # nonempty=True,
         )
 
 if __name__ == '__main__':
-    filename = sys.argv[2]
     mountpoint = sys.argv[1]
+    filename = sys.argv[2]
     image = load_image(filename)
-    
+
+    logging.basicConfig(level=logging.DEBUG)
     main(mountpoint, image)
