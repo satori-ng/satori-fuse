@@ -69,12 +69,7 @@ class Passthrough(LoggingMixIn, Operations):
             raise FuseOSError(errno.ENOTDIR)
 
     def readlink(self, path):
-        pathname = os.readlink(self._full_path(path))
-        if pathname.startswith("/"):
-            # Path name is absolute, sanitize it.
-            return os.path.relpath(pathname, self.root)
-        else:
-            return pathname
+        return self.satori_image.get_attribute(path, 'link')
 
     def mknod(self, path, mode, dev):
         raise FuseOSError(errno.EROFS)
@@ -113,15 +108,13 @@ class Passthrough(LoggingMixIn, Operations):
     # ============
 
     def open(self, path, flags):
-        full_path = self._full_path(path)
-        return os.open(full_path, flags)
+        raise FuseOSError(errno.ENOSYS)
 
     def create(self, path, mode, fi=None):
         raise FuseOSError(errno.EROFS)
 
     def read(self, path, length, offset, fh):
-        os.lseek(fh, offset, os.SEEK_SET)
-        return os.read(fh, length)
+        raise FuseOSError(errno.ENOSYS)
 
     def write(self, path, buf, offset, fh):
         raise FuseOSError(errno.EROFS)
@@ -130,13 +123,13 @@ class Passthrough(LoggingMixIn, Operations):
         raise FuseOSError(errno.EROFS)
 
     def flush(self, path, fh):
-        return os.fsync(fh)
+        raise FuseOSError(errno.ENOSYS)
 
     def release(self, path, fh):
-        return os.close(fh)
+        raise FuseOSError(errno.ENOSYS)
 
     def fsync(self, path, fdatasync, fh):
-        return self.flush(path, fh)
+        raise FuseOSError(errno.ENOSYS)
 
 
 def main(mountpoint, root):
