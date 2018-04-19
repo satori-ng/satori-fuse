@@ -15,9 +15,6 @@ from satoricore.image import SatoriImage
 from satoricore.serialize import load_image
 
 
-class ReadOnlyException(Exception):
-    """Filesystem loaded in Read-Only mode."""
-
 class Passthrough(LoggingMixIn, Operations):
     def __init__(self, root, satori_image, read_only=True):
         self.root = root
@@ -42,40 +39,34 @@ class Passthrough(LoggingMixIn, Operations):
         #     raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        full_path = self._full_path(path)
-        return os.chmod(full_path, mode)
+        raise FuseOSError(errno.EROFS)
 
     def chown(self, path, uid, gid):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        full_path = self._full_path(path)
-        return os.chown(full_path, uid, gid)
+        raise FuseOSError(errno.EROFS)
 
     def getattr(self, path, fh=None):
+        # Merge stat and times dicts
+        try:
+            st = self.satori_image.get_attribute(path, 'stat')
+            st.update(self.satori_image.get_attribute(path, 'times'))
+        except FileNotFoundError:
+            raise FuseOSError(errno.ENOENT)
 
-        # full_path = self._full_path(path)
-        st = self.satori_image.get_attribute(path, 'stat')
-        st.update(self.satori_image.get_attribute(path, 'times'))
-        print(path + str(st))
-        st_list = ['st_atime', 'st_ctime', 'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid']
+        if st.get("mode", None) is None:
+            return {"st_mode": (S_IFDIR | 0o777), "st_nlink": 2}
 
-        # st[k] = None
-        # try:
-        if st.get("privileges", None) is None:
-            return dict(st_mode=(S_IFDIR | 0o777), st_nlink=2)
-        st["mode"] = st["privileges"]
-        # print(dict(("st_" + key, st.get(key, 1)) for key in ('atime', 'ctime',
-                 # 'gid', 'mode', 'mtime', 'nlink', 'size', 'uid')))
-        return dict(("st_" + key, st.get(key, 1)) for key in ('atime', 'ctime',
-                 'gid', 'mode', 'mtime', 'nlink', 'size', 'uid'))
-        # except AttributeError:
+        # Append "st_" to all keys
+        return {"st_" + k: st[k] for k in st.keys()}
 
     def readdir(self, path, fh):
         # full_path = self._full_path(path)
 
-        return self.satori_image.get_dir_contents(path)
+        try:
+            return self.satori_image.get_dir_contents(path)
+        except FileNotFoundError:
+            raise FuseOSError(errno.ENOENT)
+        except NotADirectoryError:
+            raise FuseOSError(errno.ENOTDIR)
 
     def readlink(self, path):
         pathname = os.readlink(self._full_path(path))
@@ -86,20 +77,13 @@ class Passthrough(LoggingMixIn, Operations):
             return pathname
 
     def mknod(self, path, mode, dev):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.mknod(self._full_path(path), mode, dev)
+        raise FuseOSError(errno.EROFS)
 
     def rmdir(self, path):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        full_path = self._full_path(path)
-        return os.rmdir(full_path)
+        raise FuseOSError(errno.EROFS)
 
     def mkdir(self, path, mode):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.mkdir(self._full_path(path), mode)
+        raise FuseOSError(errno.EROFS)
 
     def statfs(self, path):
         full_path = self._full_path(path)
@@ -109,29 +93,19 @@ class Passthrough(LoggingMixIn, Operations):
             'f_frsize', 'f_namemax'))
 
     def unlink(self, path):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.unlink(self._full_path(path))
+        raise FuseOSError(errno.EROFS)
 
     def symlink(self, name, target):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.symlink(name, self._full_path(target))
+        raise FuseOSError(errno.EROFS)
 
     def rename(self, old, new):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.rename(self._full_path(old), self._full_path(new))
+        raise FuseOSError(errno.EROFS)
 
     def link(self, target, name):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.link(self._full_path(target), self._full_path(name))
+        raise FuseOSError(errno.EROFS)
 
     def utimens(self, path, times=None):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        return os.utime(self._full_path(path), times)
+        raise FuseOSError(errno.EROFS)
 
     # File methods
     # ============
@@ -141,27 +115,17 @@ class Passthrough(LoggingMixIn, Operations):
         return os.open(full_path, flags)
 
     def create(self, path, mode, fi=None):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        full_path = self._full_path(path)
-        return os.open(full_path, os.O_WRONLY | os.O_CREAT, mode)
+        raise FuseOSError(errno.EROFS)
 
     def read(self, path, length, offset, fh):
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
     def write(self, path, buf, offset, fh):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        os.lseek(fh, offset, os.SEEK_SET)
-        return os.write(fh, buf)
+        raise FuseOSError(errno.EROFS)
 
     def truncate(self, path, length, fh=None):
-        if self.read_only:
-            raise ReadOnlyException("Filesystem loaded in Read-Only mode.")
-        full_path = self._full_path(path)
-        with open(full_path, 'r+') as f:
-            f.truncate(length)
+        raise FuseOSError(errno.EROFS)
 
     def flush(self, path, fh):
         return os.fsync(fh)
