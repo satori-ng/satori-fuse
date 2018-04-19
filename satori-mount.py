@@ -86,11 +86,13 @@ class Passthrough(LoggingMixIn, Operations):
         raise FuseOSError(errno.EROFS)
 
     def statfs(self, path):
-        full_path = self._full_path(path)
-        stv = os.statvfs(full_path)
-        return dict((key, getattr(stv, key)) for key in ('f_bavail', 'f_bfree',
-            'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
-            'f_frsize', 'f_namemax'))
+        try:
+            st = self.satori_image.get_attribute(path, 'statfs')
+        except FileNotFoundError:
+            raise FuseOSError(errno.ENOENT)
+
+        # Append "f_" to all keys
+        return {"f_" + k: st[k] for k in st.keys()}
 
     def unlink(self, path):
         raise FuseOSError(errno.EROFS)
