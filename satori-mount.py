@@ -4,13 +4,15 @@
 
 from __future__ import with_statement
 
+import argparse
 import os
 import sys
+import tempfile
 import errno
 import logging
 from stat import S_IFDIR, S_IFREG
-
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
+
 from satoricore.image import SatoriImage
 from satoricore.serialize import load_image
 
@@ -145,9 +147,28 @@ def main(mountpoint, root):
         )
 
 if __name__ == '__main__':
-    mountpoint = sys.argv[1]
-    filename = sys.argv[2]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("SatoriFile", help="The SatoriImage file to mount")
+    parser.add_argument("--mountpoint", help="The directory to use as mount target")
+
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.DEBUG)
+
+    mountpoint = args.mountpoint
+    use_temp_dir = False
+    if mountpoint is None:
+        mountpoint = tempfile.mkdtemp(prefix='satori_mnt_')
+        use_temp_dir = True
+
+    filename = args.SatoriFile
     image = load_image(filename)
 
-    logging.basicConfig(level=logging.DEBUG)
-    main(mountpoint, image)
+    print("[+] Mounting Image at: '{}'".format(mountpoint))
+
+    try:
+        main(mountpoint, image)
+    finally:
+        if use_temp_dir :
+            print("[!] Cleaning up '{}'".format(mountpoint))
+            os.rmdir(mountpoint)
