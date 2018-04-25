@@ -47,18 +47,11 @@ class Passthrough(LoggingMixIn, Operations):
         raise FuseOSError(errno.EROFS)
 
     def getattr(self, path, fh=None):
-        # Merge stat and times dicts
-        try:
-            st = self.satori_image.get_attribute(path, 'stat')
-            st.update(self.satori_image.get_attribute(path, 'times'))
-        except FileNotFoundError:
-            raise FuseOSError(errno.ENOENT)
 
-        if st.get("mode", None) is None:
+        st = self.satori_image.lstat(path)
+        if st.get("st_mode", None) is None:
             return {"st_mode": (S_IFDIR | 0o777), "st_nlink": 2}
-
-        # Append "st_" to all keys
-        return {"st_" + k: st[k] for k in st.keys()}
+        return st
 
     def readdir(self, path, fh):
         # full_path = self._full_path(path)
