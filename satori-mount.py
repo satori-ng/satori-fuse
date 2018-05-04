@@ -14,7 +14,7 @@ from stat import S_IFDIR, S_IFREG
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 from satoricore.image import SatoriImage
-from satoricore.serialize import load_image
+from satoricore.file import load_image
 
 
 class Passthrough(LoggingMixIn, Operations):
