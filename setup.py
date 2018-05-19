@@ -3,7 +3,7 @@ from setuptools import setup
 
 
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __name__ = 'satorifuse'
 __desc__ = 'The System Image Mount Tool of the Satori-Suite'
 __email__ = 'satori_ng@email.com'
