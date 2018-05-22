@@ -3,7 +3,7 @@ Utility to mount *Satori Images* in the Filesystem
 
 ![logo6](https://github.com/satori-ng/Logos/blob/master/logos/light/logo6.png)
 
-[![PyPI version](https://badge.fury.io/py/satori-fuse.svg)](https://pypi.org/project/satori-fuse)
+[![PyPI version](https://badge.fury.io/py/satori-fuse.svg)](https://pypi.org/project/satori-fuse) - `pip install satori-fuse`
 
 *Satori Image Files* contain a structured copy of a Filesystem (created with [satori-imager](https://github.com/satori-ng/satori-imager)). This Filesystem image can be mounted using *FUSE* under a directory just like a *USB drive device*.
 
