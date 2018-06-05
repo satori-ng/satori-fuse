@@ -15,6 +15,13 @@ from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 from satoricore.image import SatoriImage
 from satoricore.file import load_image
+from satoricore.common import load_extension_list
+from satoricore.logger import logger
+
+import hooker
+hooker.EVENTS.append(["fuse.on_stat", "fuse.on_open","fuse.on_read"])
+
+ENCODING = sys.getdefaultencoding()
 
 
 class Passthrough(LoggingMixIn, Operations):
@@ -29,7 +36,7 @@ class Passthrough(LoggingMixIn, Operations):
     def _full_path(self, partial):
         partial = partial.lstrip("/")
         path = os.path.join(self.root, partial)
-        return partial
+        return path
 
     # Filesystem methods
     # ==================
@@ -47,7 +54,6 @@ class Passthrough(LoggingMixIn, Operations):
         raise FuseOSError(errno.EROFS)
 
     def getattr(self, path, fh=None):
-
         st = self.satori_image.lstat(path)
         if st.get("st_mode", None) is None:
             return {"st_mode": (S_IFDIR | 0o777), "st_nlink": 2}
@@ -103,13 +109,28 @@ class Passthrough(LoggingMixIn, Operations):
     # ============
 
     def open(self, path, flags):
-        raise FuseOSError(errno.ENOSYS)
+        hooker.EVENTS['fuse.on_open'](
+                satori_image=self.satori_image,
+                file_path=path, flags=flags
+            )
+        return 1
+        # raise FuseOSError(errno.ENOSYS)
 
     def create(self, path, mode, fi=None):
         raise FuseOSError(errno.EROFS)
 
     def read(self, path, length, offset, fh):
-        raise FuseOSError(errno.ENOSYS)
+        # Use immutable object to return a value from hook
+        value = {'return':None}
+        hooker.EVENTS['fuse.on_read'](
+                satori_image=self.satori_image, 
+                file_path=path, length=length, offset=offset, fh=fh,
+                value=value,
+            )
+        if value['return'] is None:
+            raise FuseOSError(errno.ENOSYS)
+        ret = bytes(value['return'], ENCODING)
+        return ret
 
     def write(self, path, buf, offset, fh):
         raise FuseOSError(errno.EROFS)
@@ -141,12 +162,27 @@ def main_fuse(mountpoint, root):
 
 
 def main():
+    global ENCODING
     parser = argparse.ArgumentParser()
     parser.add_argument("SatoriFile", help="The SatoriImage file to mount")
     parser.add_argument("--mountpoint", help="The directory to use as mount target")
+    parser.add_argument("--encoding",
+        help="""The Text Encoding to use for 'open("..","r")' System calls """,
+        default=ENCODING,
+        )
+    parser.add_argument(
+        '-l', '--load-extensions',
+        help='Load the following extensions',
+        action='append',
+        default=[],
+    )
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG)
+
+    ENCODING = args.encoding
+
+    load_extension_list(args.load_extensions)
 
     mountpoint = args.mountpoint
     use_temp_dir = False
@@ -156,14 +192,14 @@ def main():
 
     filename = args.SatoriFile
     image = load_image(filename)
-
-    print("[+] Mounting Image at: '{}'".format(mountpoint))
+    # print (type(image))
+    logger.warn("Mounting Image at: '{}'".format(mountpoint))
 
     try:
         main_fuse(mountpoint, image)
     finally:
         if use_temp_dir :
-            print("[!] Cleaning up '{}'".format(mountpoint))
+            logger.warn("[!] Cleaning up '{}'".format(mountpoint))
             os.rmdir(mountpoint)
 
 
