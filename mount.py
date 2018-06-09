@@ -43,9 +43,6 @@ class Passthrough(LoggingMixIn, Operations):
 
     def access(self, path, mode):
         full_path = self._full_path(path)
-        return True
-        # if not os.access(full_path, mode):
-        #     raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
         raise FuseOSError(errno.EROFS)
@@ -60,8 +57,6 @@ class Passthrough(LoggingMixIn, Operations):
         return st
 
     def readdir(self, path, fh):
-        # full_path = self._full_path(path)
-
         try:
             return self.satori_image.get_dir_contents(path)
         except FileNotFoundError:
